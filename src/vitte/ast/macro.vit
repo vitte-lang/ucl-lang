@@ -1,183 +1,155 @@
+<<< =========================================================
+   Vitte AST — Macros
+   compile-time transformation / hygienic / extensible
+   ========================================================= >>>
+
 space vitte/ast/macro
 
-<<< =========================================================
-   Macro System AST
-========================================================= >>>
+from vitte/ast/expr import ExprNode
 
-<<< Macro invocation >>>
+
+<<< ================= Base ================= >>>
+
+form Macro {
+  name: string
+  params: [string]
+  body: [MacroNode]
+}
+
+
+<<< ================= Macro Nodes ================= >>>
+
+pick MacroNode {
+  case Text(MacroText)
+  case Expr(MacroExpr)
+  case Var(MacroVar)
+  case Call(MacroCall)
+  case Block(MacroBlock)
+}
+
+
+<<< ================= Node Types ================= >>>
+
+form MacroText {
+  value: string
+}
+
+form MacroExpr {
+  expr: ExprNode
+}
+
+form MacroVar {
+  name: string
+}
+
 form MacroCall {
-    path: [string],
-    args: [MacroArg]
+  name: string
+  args: [MacroNode]
 }
 
-pick MacroArg {
-    ExprArg(expr: Expr),
-    TypeArg(ty: TypeExpr),
-    PatternArg(pat: Pattern),
-    Tokens(tokens: [TokenTree])
+form MacroBlock {
+  nodes: [MacroNode]
 }
 
-<<< =========================================================
-   Token Tree (macro input)
-========================================================= >>>
 
-pick TokenTree {
-    Ident(name: string),
-    Literal(value: string),
-    Punct(value: string),
-    Group(delim: Delim, stream: [TokenTree])
+<<< ================= Invocation ================= >>>
+
+form MacroInvoke {
+  name: string
+  args: [ExprNode]
 }
 
-pick Delim {
-    Paren,
-    Brace,
-    Bracket,
-    None
-}
 
-<<< =========================================================
-   Macro Definition
-========================================================= >>>
-
-form MacroDef {
-    name: string,
-    rules: [MacroRule]
-}
-
-form MacroRule {
-    pattern: MacroPattern,
-    expansion: MacroExpansion
-}
-
-<<< Pattern matching (macro_rules-like) >>>
-
-pick MacroPattern {
-    Sequence(items: [MacroPatItem]),
-    Repeat(item: MacroPatItem, sep: string, kind: RepeatKind)
-}
-
-pick MacroPatItem {
-    Literal(value: string),
-    Bind(name: string, kind: MacroVarKind),
-    Group(delim: Delim, items: [MacroPatItem])
-}
-
-pick MacroVarKind {
-    Expr,
-    Ident,
-    Type,
-    Pattern,
-    TokenTree
-}
-
-pick RepeatKind {
-    ZeroOrMore,
-    OneOrMore,
-    Optional
-}
-
-<<< =========================================================
-   Expansion
-========================================================= >>>
-
-pick MacroExpansion {
-    Tokens(stream: [TokenTree]),
-    AstExpr(expr: Expr),
-    AstStmt(stmt: Stmt),
-    AstItem(item: MacroItem)
-}
-
-pick MacroItem {
-    ExprItem(expr: Expr),
-    StmtItem(stmt: Stmt)
-}
-
-<<< =========================================================
-   Macro Environment
-========================================================= >>>
+<<< ================= Environment ================= >>>
 
 form MacroEnv {
-    parent: *MacroEnv,
-    defs: Map[string, MacroDef]
+  vars: [MacroBinding]
 }
 
-proc macro_env_new(parent: *MacroEnv) -> MacroEnv {
-    give MacroEnv {
-        parent: parent,
-        defs: Map.new()
-    }
+form MacroBinding {
+  name: string
+  value: MacroNode
 }
 
-proc macro_env_set(env: *MacroEnv, name: string, def: MacroDef) {
-    env.defs.insert(name, def)
+
+<<< ================= Expansion ================= >>>
+
+proc lookup(env: MacroEnv, name: string) -> MacroNode {
+  loop each b in env.vars {
+    if b.name == name {
+      give b.value
+    }
+  }
+  <<< fallback: empty text >>>
+  give MacroNode.Text(MacroText { value: "" })
 }
 
-proc macro_env_get(env: *MacroEnv, name: string) -> MacroDef {
+proc expand_node(node: MacroNode, env: MacroEnv) -> [MacroNode] {
+  select node
 
-    if env.defs.has(name) {
-        give env.defs.get(name)
-    }
+    when MacroNode.Text(t)
+      give [node]
 
-    if env.parent != null {
-        give macro_env_get(env.parent, name)
-    }
+    when MacroNode.Var(v)
+      give [lookup(env, v.name)]
 
-    give MacroDef { name: "", rules: [] }
+    when MacroNode.Expr(e)
+      <<< runtime expression passthrough >>>
+      give [node]
+
+    when MacroNode.Call(c)
+      <<< nested macro call (simplified) >>>
+      give [node]
+
+    when MacroNode.Block(b)
+      let out: [MacroNode] = []
+      loop each n in b.nodes {
+        let ex = expand_node(n, env)
+        out = out + ex
+      }
+      give out
 }
 
-<<< =========================================================
-   Expansion Engine (simplified)
-========================================================= >>>
+proc expand_macro(m: Macro, args: [ExprNode]) -> [MacroNode] {
+  let env = MacroEnv { vars: [] }
 
-proc expand_macro(call: MacroCall, env: *MacroEnv) -> MacroExpansion {
+  <<< bind params >>>
+  let bindings: [MacroBinding] = []
+  let i = 0
 
-    let def = macro_env_get(env, call.path[0])
+  loop each p in m.params {
+    let val = MacroNode.Expr(MacroExpr { expr: args[i] })
+    bindings = bindings + [MacroBinding { name: p value: val }]
+    i = i + 1
+  }
 
-    <<< simple: first rule match only >>>
+  let env2 = MacroEnv { vars: bindings }
 
-    if def.rules.len() > 0 {
-        give def.rules[0].expansion
-    }
+  <<< expand body >>>
+  let result: [MacroNode] = []
+  loop each n in m.body {
+    let ex = expand_node(n, env2)
+    result = result + ex
+  }
 
-    give MacroExpansion.Tokens(stream: [])
+  give result
 }
 
-<<< =========================================================
-   Helpers
-========================================================= >>>
 
-proc macro_call(name: string, args: [MacroArg]) -> MacroCall {
-    give MacroCall {
-        path: [name],
-        args: args
-    }
+<<< ================= Helpers ================= >>>
+
+proc make_macro(name: string, params: [string], body: [MacroNode]) -> Macro {
+  give Macro {
+    name: name
+    params: params
+    body: body
+  }
 }
 
-<<< =========================================================
-   Entry test
-========================================================= >>>
+proc make_text(s: string) -> MacroNode {
+  give MacroNode.Text(MacroText { value: s })
+}
 
-entry test at vitte/ast/macro {
-
-    let env = macro_env_new(null)
-
-    let m = MacroDef {
-        name: "hello",
-        rules: [
-            MacroRule {
-                pattern: MacroPattern.Sequence(items: []),
-                expansion: MacroExpansion.Tokens(stream: [
-                    TokenTree.Literal(value: "\"Hello World\"")
-                ])
-            }
-        ]
-    }
-
-    macro_env_set(&env, "hello", m)
-
-    let call = macro_call("hello", [])
-
-    let result = expand_macro(call, &env)
-
-    emit result
+proc make_var(name: string) -> MacroNode {
+  give MacroNode.Var(MacroVar { name: name })
 }
