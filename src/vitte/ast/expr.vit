@@ -1,138 +1,197 @@
+<<< =========================================================
+   Vitte AST — Expressions
+   canonical representation for parser / evaluator / typing
+   ========================================================= >>>
+
 space vitte/ast/expr
 
-<<< =========================================================
-   Core Expressions AST
-========================================================= >>>
 
-pick Expr {
+<<< ================= Base ================= >>>
 
-    <<< Literals >>>
-    Int(v: i64),
-    Float(v: f64),
-    Bool(v: bool),
-    String(v: string),
-    Char(v: string),
-    List(items: [Expr]),
-
-    <<< Variables >>>
-    Ident(name: string),
-
-    <<< Unary >>>
-    Unary(op: UnaryOp, expr: Expr),
-
-    <<< Binary >>>
-    Binary(op: BinOp, left: Expr, right: Expr),
-
-    <<< Assignment >>>
-    Assign(target: Expr, value: Expr),
-
-    <<< Calls >>>
-    Call(callee: Expr, args: [Expr]),
-
-    <<< Access >>>
-    Member(obj: Expr, field: string),
-    Index(obj: Expr, index: Expr),
-
-    <<< Control expressions >>>
-    If(cond: Expr, then_expr: Expr, else_expr: Expr),
-
-    <<< Blocks (expression-oriented) >>>
-    Block(exprs: [Expr]),
-
-    <<< Cast / Type test >>>
-    Cast(expr: Expr, ty: TypeExpr),
-    Is(expr: Expr, pattern: Pattern)
+form Expr {
+  kind: string
 }
 
-<<< =========================================================
-   Operators
-========================================================= >>>
 
-pick BinOp {
-    Add, Sub, Mul, Div, Mod,
-    Eq, Ne,
-    Lt, Le, Gt, Ge,
-    And, Or
+<<< ================= Literals ================= >>>
+
+form ExprString {
+  kind: string
+  value: string
 }
 
-pick UnaryOp {
-    Neg, Not
+form ExprNumber {
+  kind: string
+  value: float
 }
 
-<<< =========================================================
-   Patterns (for match / when)
-========================================================= >>>
-
-pick Pattern {
-    Wildcard,
-    Ident(name: string),
-    Literal(expr: Expr),
-    Variant(path: [string], args: [Pattern])
+form ExprBool {
+  kind: string
+  value: bool
 }
 
-<<< =========================================================
-   Type Expressions
-========================================================= >>>
-
-pick TypeExpr {
-
-    <<< Primitive >>>
-    Bool,
-    String,
-    Int,
-    I32, I64, I128,
-    U32, U64, U128,
-
-    <<< Composite >>>
-    Path(path: [string], generics: [TypeExpr]),
-
-    <<< Pointer / Slice >>>
-    Pointer(inner: TypeExpr),
-    Slice(inner: TypeExpr),
-
-    <<< Function type >>>
-    Proc(params: [TypeExpr], ret: TypeExpr)
+form ExprNull {
+  kind: string
 }
 
-<<< =========================================================
-   Helpers (construction)
-========================================================= >>>
 
-proc expr_int(v: i64) -> Expr {
-    give Expr.Int(v: v)
+<<< ================= Variable ================= >>>
+
+form ExprVar {
+  kind: string
+  name: string
 }
 
-proc expr_bool(v: bool) -> Expr {
-    give Expr.Bool(v: v)
+
+<<< ================= Unary ================= >>>
+
+form ExprUnary {
+  kind: string
+  op: string
+  expr: Expr
 }
 
-proc expr_ident(name: string) -> Expr {
-    give Expr.Ident(name: name)
+
+<<< ================= Binary ================= >>>
+
+form ExprBinary {
+  kind: string
+  op: string
+  left: Expr
+  right: Expr
 }
 
-proc expr_add(a: Expr, b: Expr) -> Expr {
-    give Expr.Binary(op: BinOp.Add, left: a, right: b)
+
+<<< ================= Call ================= >>>
+
+form ExprCall {
+  kind: string
+  callee: string
+  args: [Expr]
 }
 
-proc expr_call(fn: Expr, args: [Expr]) -> Expr {
-    give Expr.Call(callee: fn, args: args)
+
+<<< ================= Collections ================= >>>
+
+form ExprList {
+  kind: string
+  elements: [Expr]
 }
 
-<<< =========================================================
-   Debug (optional)
-========================================================= >>>
+form ExprMapEntry {
+  key: string
+  value: Expr
+}
 
-proc expr_kind(e: Expr) -> string {
+form ExprMap {
+  kind: string
+  entries: [ExprMapEntry]
+}
 
-    match e {
-        case Expr.Int(_) { give "Int" }
-        case Expr.Float(_) { give "Float" }
-        case Expr.Bool(_) { give "Bool" }
-        case Expr.String(_) { give "String" }
-        case Expr.Ident(_) { give "Ident" }
-        case Expr.Binary(_, _, _) { give "Binary" }
-        case Expr.Call(_, _) { give "Call" }
-        case Expr.Assign(_, _) { give "Assign" }
-        else { give "Other" }
-    }
+
+<<< ================= Access ================= >>>
+
+form ExprAccess {
+  kind: string
+  object: Expr
+  field: string
+}
+
+form ExprIndex {
+  kind: string
+  object: Expr
+  index: Expr
+}
+
+
+<<< ================= Advanced ================= >>>
+
+form ExprIf {
+  kind: string
+  cond: Expr
+  then_expr: Expr
+  else_expr: Expr
+}
+
+form ExprLambda {
+  kind: string
+  params: [string]
+  body: Expr
+}
+
+
+<<< ================= Tagged Union ================= >>>
+
+pick ExprNode {
+  case String(ExprString)
+  case Number(ExprNumber)
+  case Bool(ExprBool)
+  case Null(ExprNull)
+  case Var(ExprVar)
+  case Unary(ExprUnary)
+  case Binary(ExprBinary)
+  case Call(ExprCall)
+  case List(ExprList)
+  case Map(ExprMap)
+  case Access(ExprAccess)
+  case Index(ExprIndex)
+  case If(ExprIf)
+  case Lambda(ExprLambda)
+}
+
+
+<<< ================= Constructors ================= >>>
+
+proc make_string(v: string) -> ExprNode {
+  give ExprNode.String(ExprString { kind: "string" value: v })
+}
+
+proc make_number(v: float) -> ExprNode {
+  give ExprNode.Number(ExprNumber { kind: "number" value: v })
+}
+
+proc make_bool(v: bool) -> ExprNode {
+  give ExprNode.Bool(ExprBool { kind: "bool" value: v })
+}
+
+proc make_null() -> ExprNode {
+  give ExprNode.Null(ExprNull { kind: "null" })
+}
+
+proc make_var(name: string) -> ExprNode {
+  give ExprNode.Var(ExprVar { kind: "var" name: name })
+}
+
+proc make_binary(op: string, left: Expr, right: Expr) -> ExprNode {
+  give ExprNode.Binary(ExprBinary {
+    kind: "binary"
+    op: op
+    left: left
+    right: right
+  })
+}
+
+proc make_call(name: string, args: [Expr]) -> ExprNode {
+  give ExprNode.Call(ExprCall {
+    kind: "call"
+    callee: name
+    args: args
+  })
+}
+
+
+<<< ================= Helpers ================= >>>
+
+proc is_literal(e: ExprNode) -> bool {
+  select e
+    when ExprNode.String(_) give true
+    when ExprNode.Number(_) give true
+    when ExprNode.Bool(_) give true
+    when ExprNode.Null(_) give true
+    otherwise give false
+}
+
+proc is_constant(e: ExprNode) -> bool {
+  <<< simplifié >>>
+  give is_literal(e)
 }
