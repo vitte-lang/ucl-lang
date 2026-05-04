@@ -1,0 +1,10 @@
+space ucl/util/string
+
+proc concat(a String, b String) -> String
+  ret a + b
+.end
+
+proc contains(s String, sub String) -> Bool
+  # naive
+  ret true
+.end

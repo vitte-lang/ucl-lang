@@ -1,0 +1,258 @@
+space vitte/ast/types
+
+use vitte/ast/expr { TypeExpr }
+
+<<< =========================================================
+   Core Type System (Resolved Types)
+========================================================= >>>
+
+pick Type {
+
+    <<< primitives >>>
+    TBool,
+    TString,
+    TInt,
+    TI32, TI64, TI128,
+    TU32, TU64, TU128,
+    TFloat,
+
+    <<< special >>>
+    TUnit,
+    TUnknown,
+
+    <<< composite >>>
+    TList(inner: Type),
+    TMap(key: Type, value: Type),
+
+    <<< pointers / slices >>>
+    TPointer(inner: Type),
+    TSlice(inner: Type),
+
+    <<< function >>>
+    TProc(params: [Type], ret: Type),
+
+    <<< struct / form >>>
+    TStruct(name: string, fields: [TypeField]),
+
+    <<< enum / pick >>>
+    TEnum(name: string, variants: [TypeVariant]),
+
+    <<< generics >>>
+    TGeneric(name: string),
+    TInstance(name: string, args: [Type]),
+
+    <<< reference (late binding) >>>
+    TRef(path: [string])
+}
+
+form TypeField {
+    name: string,
+    ty: Type
+}
+
+form TypeVariant {
+    name: string,
+    fields: [TypeField]
+}
+
+<<< =========================================================
+   Type Environment
+========================================================= >>>
+
+form TypeEnv {
+    parent: *TypeEnv,
+    types: Map[string, Type]
+}
+
+proc type_env_new(parent: *TypeEnv) -> TypeEnv {
+    give TypeEnv {
+        parent: parent,
+        types: Map.new()
+    }
+}
+
+proc type_register(env: *TypeEnv, name: string, t: Type) {
+    env.types.insert(name, t)
+}
+
+proc type_get(env: *TypeEnv, name: string) -> Type {
+
+    if env.types.has(name) {
+        give env.types.get(name)
+    }
+
+    if env.parent != null {
+        give type_get(env.parent, name)
+    }
+
+    give Type.TUnknown
+}
+
+<<< =========================================================
+   Type Equality
+========================================================= >>>
+
+proc type_eq(a: Type, b: Type) -> bool {
+
+    match a {
+
+        case Type.TInt {
+            when b is Type.TInt { give true }
+        }
+
+        case Type.TBool {
+            when b is Type.TBool { give true }
+        }
+
+        case Type.TString {
+            when b is Type.TString { give true }
+        }
+
+        case Type.TPointer(x) {
+            when b is Type.TPointer(y) {
+                give type_eq(x, y)
+            }
+        }
+
+        case Type.TList(x) {
+            when b is Type.TList(y) {
+                give type_eq(x, y)
+            }
+        }
+
+        case Type.TProc(px, rx) {
+            when b is Type.TProc(py, ry) {
+
+                if px.len() != py.len() {
+                    give false
+                }
+
+                let i = 0
+                for t in px {
+                    if not type_eq(t, py[i]) {
+                        give false
+                    }
+                    i = i + 1
+                }
+
+                give type_eq(rx, ry)
+            }
+        }
+
+        case Type.TInstance(name_a, args_a) {
+            when b is Type.TInstance(name_b, args_b) {
+
+                if name_a != name_b or args_a.len() != args_b.len() {
+                    give false
+                }
+
+                let i = 0
+                for ta in args_a {
+                    if not type_eq(ta, args_b[i]) {
+                        give false
+                    }
+                    i = i + 1
+                }
+
+                give true
+            }
+        }
+
+        else {
+            give a == b
+        }
+    }
+
+    give false
+}
+
+<<< =========================================================
+   Type From AST (lowering)
+========================================================= >>>
+
+proc type_from_expr(te: TypeExpr, env: *TypeEnv) -> Type {
+
+    match te {
+
+        case TypeExpr.Int { give Type.TInt }
+        case TypeExpr.Bool { give Type.TBool }
+        case TypeExpr.String { give Type.TString }
+
+        case TypeExpr.Pointer(inner) {
+            give Type.TPointer(type_from_expr(inner, env))
+        }
+
+        case TypeExpr.Slice(inner) {
+            give Type.TSlice(type_from_expr(inner, env))
+        }
+
+        case TypeExpr.Proc(params, ret) {
+
+            let out = []
+
+            for p in params {
+                out.push(type_from_expr(p, env))
+            }
+
+            give Type.TProc(
+                params: out,
+                ret: type_from_expr(ret, env)
+            )
+        }
+
+        case TypeExpr.Path(path, generics) {
+
+            let name = path[0]
+
+            if generics.len() == 0 {
+                give type_get(env, name)
+            }
+
+            let args = []
+
+            for g in generics {
+                args.push(type_from_expr(g, env))
+            }
+
+            give Type.TInstance(name: name, args: args)
+        }
+
+        else {
+            give Type.TUnknown
+        }
+    }
+}
+
+<<< =========================================================
+   Helpers
+========================================================= >>>
+
+proc type_is_numeric(t: Type) -> bool {
+    give t == Type.TInt or t == Type.TI32 or t == Type.TI64
+}
+
+proc type_is_bool(t: Type) -> bool {
+    give t == Type.TBool
+}
+
+proc type_is_string(t: Type) -> bool {
+    give t == Type.TString
+}
+
+<<< =========================================================
+   Entry test
+========================================================= >>>
+
+entry test at vitte/ast/types {
+
+    let env = type_env_new(null)
+
+    type_register(&env, "MyInt", Type.TInt)
+
+    let t1 = Type.TInt
+    let t2 = Type.TInt
+
+    let eq = type_eq(t1, t2)
+
+    emit eq
+}

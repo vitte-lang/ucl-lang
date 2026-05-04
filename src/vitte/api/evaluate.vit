@@ -1,0 +1,329 @@
+space vitte/api/evaluate
+
+<<< =========================================================
+   Runtime Values
+========================================================= >>>
+
+form Value {
+    kind: ValueKind
+}
+
+pick ValueKind {
+    Int(v: i64),
+    Bool(v: bool),
+    String(v: string),
+    List(items: [Value]),
+    Unit
+}
+
+<<< =========================================================
+   AST Minimal (runtime aligned)
+========================================================= >>>
+
+pick Expr {
+    Int(v: i64),
+    Bool(v: bool),
+    String(v: string),
+    Ident(name: string),
+    List(items: [Expr]),
+    Binary(op: BinOp, left: Expr, right: Expr),
+    Call(name: string, args: [Expr])
+}
+
+pick BinOp {
+    Add, Sub, Mul, Div,
+    Eq,
+    And, Or
+}
+
+pick Stmt {
+    Let(name: string, expr: Expr),
+    Set(name: string, expr: Expr),
+    Expr(expr: Expr),
+    If(cond: Expr, then_block: Block, else_block: Block),
+    While(cond: Expr, block: Block)
+}
+
+form Block {
+    stmts: [Stmt]
+}
+
+<<< =========================================================
+   Environment
+========================================================= >>>
+
+form Env {
+    parent: *Env,
+    store: Map[string, Value]
+}
+
+proc env_new(parent: *Env) -> Env {
+    give Env {
+        parent: parent,
+        store: Map.new()
+    }
+}
+
+proc env_get(env: *Env, name: string) -> Value {
+    if env.store.has(name) {
+        give env.store.get(name)
+    } else {
+        if env.parent != null {
+            give env_get(env.parent, name)
+        } else {
+            give Value { kind: ValueKind.Unit }
+        }
+    }
+}
+
+proc env_set(env: *Env, name: string, val: Value) {
+    env.store.insert(name, val)
+}
+
+<<< =========================================================
+   Expression Evaluation
+========================================================= >>>
+
+proc eval_expr(expr: Expr, env: *Env) -> Value {
+
+    match expr {
+
+        case Expr.Int(v) {
+            give Value { kind: ValueKind.Int(v: v) }
+        }
+
+        case Expr.Bool(v) {
+            give Value { kind: ValueKind.Bool(v: v) }
+        }
+
+        case Expr.String(v) {
+            give Value { kind: ValueKind.String(v: v) }
+        }
+
+        case Expr.Ident(name) {
+            give env_get(env, name)
+        }
+
+        case Expr.List(items) {
+            let out = []
+            for item in items {
+                let v = eval_expr(item, env)
+                out.push(v)
+            }
+            give Value { kind: ValueKind.List(items: out) }
+        }
+
+        case Expr.Binary(op, left, right) {
+
+            let l = eval_expr(left, env)
+            let r = eval_expr(right, env)
+
+            match op {
+
+                case BinOp.Add {
+                    when l.kind is ValueKind.Int(a) {
+                        when r.kind is ValueKind.Int(b) {
+                            give Value { kind: ValueKind.Int(v: a + b) }
+                        }
+                    }
+                }
+
+                case BinOp.Sub {
+                    when l.kind is ValueKind.Int(a) {
+                        when r.kind is ValueKind.Int(b) {
+                            give Value { kind: ValueKind.Int(v: a - b) }
+                        }
+                    }
+                }
+
+                case BinOp.Mul {
+                    when l.kind is ValueKind.Int(a) {
+                        when r.kind is ValueKind.Int(b) {
+                            give Value { kind: ValueKind.Int(v: a * b) }
+                        }
+                    }
+                }
+
+                case BinOp.Div {
+                    when l.kind is ValueKind.Int(a) {
+                        when r.kind is ValueKind.Int(b) {
+                            give Value { kind: ValueKind.Int(v: a / b) }
+                        }
+                    }
+                }
+
+                case BinOp.Eq {
+                    give Value { kind: ValueKind.Bool(v: value_eq(l, r)) }
+                }
+
+                case BinOp.And {
+                    when l.kind is ValueKind.Bool(a) {
+                        when r.kind is ValueKind.Bool(b) {
+                            give Value { kind: ValueKind.Bool(v: a and b) }
+                        }
+                    }
+                }
+
+                case BinOp.Or {
+                    when l.kind is ValueKind.Bool(a) {
+                        when r.kind is ValueKind.Bool(b) {
+                            give Value { kind: ValueKind.Bool(v: a or b) }
+                        }
+                    }
+                }
+
+                else {
+                    give Value { kind: ValueKind.Unit }
+                }
+            }
+        }
+
+        case Expr.Call(name, args) {
+
+            if name == "print" {
+                for arg in args {
+                    let v = eval_expr(arg, env)
+                    emit v
+                }
+                give Value { kind: ValueKind.Unit }
+            }
+
+            give Value { kind: ValueKind.Unit }
+        }
+
+        else {
+            give Value { kind: ValueKind.Unit }
+        }
+    }
+}
+
+<<< =========================================================
+   Statement Evaluation
+========================================================= >>>
+
+proc eval_stmt(stmt: Stmt, env: *Env) -> Value {
+
+    match stmt {
+
+        case Stmt.Let(name, expr) {
+            let v = eval_expr(expr, env)
+            env_set(env, name, v)
+            give Value { kind: ValueKind.Unit }
+        }
+
+        case Stmt.Set(name, expr) {
+            let v = eval_expr(expr, env)
+            env_set(env, name, v)
+            give Value { kind: ValueKind.Unit }
+        }
+
+        case Stmt.Expr(expr) {
+            give eval_expr(expr, env)
+        }
+
+        case Stmt.If(cond, then_block, else_block) {
+
+            let c = eval_expr(cond, env)
+
+            when c.kind is ValueKind.Bool(v) {
+                if v {
+                    give eval_block(then_block, env)
+                } else {
+                    give eval_block(else_block, env)
+                }
+            }
+
+            give Value { kind: ValueKind.Unit }
+        }
+
+        case Stmt.While(cond, block) {
+
+            loop while true {
+
+                let c = eval_expr(cond, env)
+
+                when c.kind is ValueKind.Bool(v) {
+                    if not v {
+                        break
+                    }
+                }
+
+                eval_block(block, env)
+            }
+
+            give Value { kind: ValueKind.Unit }
+        }
+
+        else {
+            give Value { kind: ValueKind.Unit }
+        }
+    }
+}
+
+<<< =========================================================
+   Block Evaluation
+========================================================= >>>
+
+proc eval_block(block: Block, env: *Env) -> Value {
+
+    let local = env_new(env)
+
+    for stmt in block.stmts {
+        eval_stmt(stmt, &local)
+    }
+
+    give Value { kind: ValueKind.Unit }
+}
+
+<<< =========================================================
+   Helpers
+========================================================= >>>
+
+proc value_eq(a: Value, b: Value) -> bool {
+
+    match a.kind {
+
+        case ValueKind.Int(x) {
+            when b.kind is ValueKind.Int(y) {
+                give x == y
+            }
+        }
+
+        case ValueKind.Bool(x) {
+            when b.kind is ValueKind.Bool(y) {
+                give x == y
+            }
+        }
+
+        case ValueKind.String(x) {
+            when b.kind is ValueKind.String(y) {
+                give x == y
+            }
+        }
+
+        else {
+            give false
+        }
+    }
+
+    give false
+}
+
+<<< =========================================================
+   Entry Test
+========================================================= >>>
+
+entry main at vitte/api/evaluate {
+
+    let env = env_new(null)
+
+    let expr = Expr.Binary(
+        op: BinOp.Add,
+        left: Expr.Int(v: 2),
+        right: Expr.Int(v: 40)
+    )
+
+    let result = eval_expr(expr, &env)
+
+    emit result
+}

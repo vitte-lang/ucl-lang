@@ -1,0 +1,138 @@
+space vitte/ast/expr
+
+<<< =========================================================
+   Core Expressions AST
+========================================================= >>>
+
+pick Expr {
+
+    <<< Literals >>>
+    Int(v: i64),
+    Float(v: f64),
+    Bool(v: bool),
+    String(v: string),
+    Char(v: string),
+    List(items: [Expr]),
+
+    <<< Variables >>>
+    Ident(name: string),
+
+    <<< Unary >>>
+    Unary(op: UnaryOp, expr: Expr),
+
+    <<< Binary >>>
+    Binary(op: BinOp, left: Expr, right: Expr),
+
+    <<< Assignment >>>
+    Assign(target: Expr, value: Expr),
+
+    <<< Calls >>>
+    Call(callee: Expr, args: [Expr]),
+
+    <<< Access >>>
+    Member(obj: Expr, field: string),
+    Index(obj: Expr, index: Expr),
+
+    <<< Control expressions >>>
+    If(cond: Expr, then_expr: Expr, else_expr: Expr),
+
+    <<< Blocks (expression-oriented) >>>
+    Block(exprs: [Expr]),
+
+    <<< Cast / Type test >>>
+    Cast(expr: Expr, ty: TypeExpr),
+    Is(expr: Expr, pattern: Pattern)
+}
+
+<<< =========================================================
+   Operators
+========================================================= >>>
+
+pick BinOp {
+    Add, Sub, Mul, Div, Mod,
+    Eq, Ne,
+    Lt, Le, Gt, Ge,
+    And, Or
+}
+
+pick UnaryOp {
+    Neg, Not
+}
+
+<<< =========================================================
+   Patterns (for match / when)
+========================================================= >>>
+
+pick Pattern {
+    Wildcard,
+    Ident(name: string),
+    Literal(expr: Expr),
+    Variant(path: [string], args: [Pattern])
+}
+
+<<< =========================================================
+   Type Expressions
+========================================================= >>>
+
+pick TypeExpr {
+
+    <<< Primitive >>>
+    Bool,
+    String,
+    Int,
+    I32, I64, I128,
+    U32, U64, U128,
+
+    <<< Composite >>>
+    Path(path: [string], generics: [TypeExpr]),
+
+    <<< Pointer / Slice >>>
+    Pointer(inner: TypeExpr),
+    Slice(inner: TypeExpr),
+
+    <<< Function type >>>
+    Proc(params: [TypeExpr], ret: TypeExpr)
+}
+
+<<< =========================================================
+   Helpers (construction)
+========================================================= >>>
+
+proc expr_int(v: i64) -> Expr {
+    give Expr.Int(v: v)
+}
+
+proc expr_bool(v: bool) -> Expr {
+    give Expr.Bool(v: v)
+}
+
+proc expr_ident(name: string) -> Expr {
+    give Expr.Ident(name: name)
+}
+
+proc expr_add(a: Expr, b: Expr) -> Expr {
+    give Expr.Binary(op: BinOp.Add, left: a, right: b)
+}
+
+proc expr_call(fn: Expr, args: [Expr]) -> Expr {
+    give Expr.Call(callee: fn, args: args)
+}
+
+<<< =========================================================
+   Debug (optional)
+========================================================= >>>
+
+proc expr_kind(e: Expr) -> string {
+
+    match e {
+        case Expr.Int(_) { give "Int" }
+        case Expr.Float(_) { give "Float" }
+        case Expr.Bool(_) { give "Bool" }
+        case Expr.String(_) { give "String" }
+        case Expr.Ident(_) { give "Ident" }
+        case Expr.Binary(_, _, _) { give "Binary" }
+        case Expr.Call(_, _) { give "Call" }
+        case Expr.Assign(_, _) { give "Assign" }
+        else { give "Other" }
+    }
+}

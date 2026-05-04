@@ -1,0 +1,258 @@
+space vitte/api/validate
+
+<<< =========================================================
+   Types de validation
+========================================================= >>>
+
+pick Type {
+    Int,
+    Bool,
+    String,
+    List,
+    Unknown
+}
+
+form VError {
+    msg: string
+}
+
+form Ctx {
+    parent: *Ctx,
+    vars: Map[string, Type],
+    errors: [VError]
+}
+
+proc ctx_new(parent: *Ctx) -> Ctx {
+    give Ctx {
+        parent: parent,
+        vars: Map.new(),
+        errors: []
+    }
+}
+
+proc ctx_set(ctx: *Ctx, name: string, t: Type) {
+    ctx.vars.insert(name, t)
+}
+
+proc ctx_get(ctx: *Ctx, name: string) -> Type {
+    if ctx.vars.has(name) {
+        give ctx.vars.get(name)
+    } else {
+        if ctx.parent != null {
+            give ctx_get(ctx.parent, name)
+        } else {
+            give Type.Unknown
+        }
+    }
+}
+
+proc err(ctx: *Ctx, msg: string) {
+    ctx.errors.push(VError { msg: msg })
+}
+
+<<< =========================================================
+   AST minimal attendu (aligné evaluate/parse)
+========================================================= >>>
+
+pick Expr {
+    Int(v: i64),
+    Bool(v: bool),
+    String(v: string),
+    Ident(name: string),
+    List(items: [Expr]),
+    Binary(op: BinOp, left: Expr, right: Expr)
+}
+
+pick BinOp {
+    Add, Sub, Mul, Div,
+    Eq, And, Or
+}
+
+pick Stmt {
+    Let(name: string, expr: Expr),
+    Set(name: string, expr: Expr),
+    Expr(expr: Expr),
+    If(cond: Expr, then_block: Block, else_block: Block),
+    While(cond: Expr, block: Block)
+}
+
+form Block {
+    stmts: [Stmt]
+}
+
+<<< =========================================================
+   Validation expressions
+========================================================= >>>
+
+proc validate_expr(e: Expr, ctx: *Ctx) -> Type {
+
+    match e {
+
+        case Expr.Int(_) {
+            give Type.Int
+        }
+
+        case Expr.Bool(_) {
+            give Type.Bool
+        }
+
+        case Expr.String(_) {
+            give Type.String
+        }
+
+        case Expr.Ident(name) {
+            let t = ctx_get(ctx, name)
+            if t == Type.Unknown {
+                err(ctx, "variable inconnue: " + name)
+            }
+            give t
+        }
+
+        case Expr.List(items) {
+            for it in items {
+                validate_expr(it, ctx)
+            }
+            give Type.List
+        }
+
+        case Expr.Binary(op, l, r) {
+
+            let tl = validate_expr(l, ctx)
+            let tr = validate_expr(r, ctx)
+
+            match op {
+
+                case BinOp.Add {
+                    if tl != Type.Int or tr != Type.Int {
+                        err(ctx, "Add attend Int")
+                    }
+                    give Type.Int
+                }
+
+                case BinOp.Sub {
+                    if tl != Type.Int or tr != Type.Int {
+                        err(ctx, "Sub attend Int")
+                    }
+                    give Type.Int
+                }
+
+                case BinOp.Mul {
+                    if tl != Type.Int or tr != Type.Int {
+                        err(ctx, "Mul attend Int")
+                    }
+                    give Type.Int
+                }
+
+                case BinOp.Div {
+                    if tl != Type.Int or tr != Type.Int {
+                        err(ctx, "Div attend Int")
+                    }
+                    give Type.Int
+                }
+
+                case BinOp.Eq {
+                    give Type.Bool
+                }
+
+                case BinOp.And {
+                    if tl != Type.Bool or tr != Type.Bool {
+                        err(ctx, "And attend Bool")
+                    }
+                    give Type.Bool
+                }
+
+                case BinOp.Or {
+                    if tl != Type.Bool or tr != Type.Bool {
+                        err(ctx, "Or attend Bool")
+                    }
+                    give Type.Bool
+                }
+            }
+        }
+    }
+}
+
+<<< =========================================================
+   Validation statements
+========================================================= >>>
+
+proc validate_stmt(s: Stmt, ctx: *Ctx) {
+
+    match s {
+
+        case Stmt.Let(name, expr) {
+            let t = validate_expr(expr, ctx)
+            ctx_set(ctx, name, t)
+        }
+
+        case Stmt.Set(name, expr) {
+            let t = ctx_get(ctx, name)
+            if t == Type.Unknown {
+                err(ctx, "assignation variable inconnue: " + name)
+            }
+            validate_expr(expr, ctx)
+        }
+
+        case Stmt.Expr(expr) {
+            validate_expr(expr, ctx)
+        }
+
+        case Stmt.If(cond, then_b, else_b) {
+            let tc = validate_expr(cond, ctx)
+            if tc != Type.Bool {
+                err(ctx, "condition doit être Bool")
+            }
+
+            let c1 = ctx_new(ctx)
+            validate_block(then_b, &c1)
+
+            let c2 = ctx_new(ctx)
+            validate_block(else_b, &c2)
+        }
+
+        case Stmt.While(cond, block) {
+            let tc = validate_expr(cond, ctx)
+            if tc != Type.Bool {
+                err(ctx, "while attend Bool")
+            }
+
+            let c = ctx_new(ctx)
+            validate_block(block, &c)
+        }
+    }
+}
+
+proc validate_block(b: Block, ctx: *Ctx) {
+    for s in b.stmts {
+        validate_stmt(s, ctx)
+    }
+}
+
+<<< =========================================================
+   Entry test
+========================================================= >>>
+
+entry test at vitte/api/validate {
+
+    let ctx = ctx_new(null)
+
+    let prog = Block {
+        stmts: [
+            Stmt.Let("x", Expr.Int(v: 10)),
+            Stmt.Set("x", Expr.Binary(
+                op: BinOp.Add,
+                left: Expr.Ident("x"),
+                right: Expr.Int(v: 2)
+            )),
+            Stmt.If(
+                cond: Expr.Bool(v: true),
+                then_block: Block { stmts: [] },
+                else_block: Block { stmts: [] }
+            )
+        ]
+    }
+
+    validate_block(prog, &ctx)
+
+    emit ctx.errors
+}

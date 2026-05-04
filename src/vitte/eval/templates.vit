@@ -1,0 +1,5 @@
+space ucl/eval/templates
+
+proc apply_template(name String)
+  # template logic
+.end

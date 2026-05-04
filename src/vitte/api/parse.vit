@@ -1,0 +1,217 @@
+space vitte/api/parse
+
+<<< =========================================================
+   Tokens
+========================================================= >>>
+
+pick Token {
+    Int(v: i64),
+    Ident(name: string),
+    Plus, Minus, Star, Slash,
+    LParen, RParen,
+    EOF
+}
+
+<<< =========================================================
+   Lexer (minimal)
+========================================================= >>>
+
+form Lexer {
+    input: string,
+    pos: i64
+}
+
+proc lexer_new(input: string) -> Lexer {
+    give Lexer { input: input, pos: 0 }
+}
+
+proc is_digit(c: string) -> bool {
+    give c >= "0" and c <= "9"
+}
+
+proc is_alpha(c: string) -> bool {
+    give (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or c == "_"
+}
+
+proc peek(l: *Lexer) -> string {
+    give l.input[l.pos]
+}
+
+proc advance(l: *Lexer) {
+    l.pos = l.pos + 1
+}
+
+proc next_token(l: *Lexer) -> Token {
+
+    let c = peek(l)
+
+    if c == "+" { advance(l); give Token.Plus }
+    if c == "-" { advance(l); give Token.Minus }
+    if c == "*" { advance(l); give Token.Star }
+    if c == "/" { advance(l); give Token.Slash }
+    if c == "(" { advance(l); give Token.LParen }
+    if c == ")" { advance(l); give Token.RParen }
+
+    if is_digit(c) {
+        let start = l.pos
+        loop while is_digit(peek(l)) {
+            advance(l)
+        }
+        let txt = l.input[start:l.pos]
+        give Token.Int(v: parse_int(txt))
+    }
+
+    if is_alpha(c) {
+        let start = l.pos
+        loop while is_alpha(peek(l)) {
+            advance(l)
+        }
+        let txt = l.input[start:l.pos]
+        give Token.Ident(name: txt)
+    }
+
+    give Token.EOF
+}
+
+<<< =========================================================
+   AST (minimal)
+========================================================= >>>
+
+pick Expr {
+    Int(v: i64),
+    Ident(name: string),
+    Binary(op: BinOp, left: Expr, right: Expr)
+}
+
+pick BinOp {
+    Add, Sub, Mul, Div
+}
+
+<<< =========================================================
+   Parser
+========================================================= >>>
+
+form Parser {
+    lexer: Lexer,
+    current: Token
+}
+
+proc parser_new(input: string) -> Parser {
+    let lex = lexer_new(input)
+    let first = next_token(&lex)
+    give Parser { lexer: lex, current: first }
+}
+
+proc eat(p: *Parser) {
+    p.current = next_token(&p.lexer)
+}
+
+<<< -------------------------
+   Primary
+-------------------------- >>>
+
+proc parse_primary(p: *Parser) -> Expr {
+
+    match p.current {
+
+        case Token.Int(v) {
+            eat(p)
+            give Expr.Int(v: v)
+        }
+
+        case Token.Ident(name) {
+            eat(p)
+            give Expr.Ident(name: name)
+        }
+
+        case Token.LParen {
+            eat(p)
+            let e = parse_expr(p)
+            eat(p) <<< RParen >>
+            give e
+        }
+
+        else {
+            give Expr.Int(v: 0)
+        }
+    }
+}
+
+<<< -------------------------
+   Multiplicative
+-------------------------- >>>
+
+proc parse_mul(p: *Parser) -> Expr {
+
+    let left = parse_primary(p)
+
+    loop while true {
+
+        match p.current {
+
+            case Token.Star {
+                eat(p)
+                let right = parse_primary(p)
+                left = Expr.Binary(op: BinOp.Mul, left: left, right: right)
+            }
+
+            case Token.Slash {
+                eat(p)
+                let right = parse_primary(p)
+                left = Expr.Binary(op: BinOp.Div, left: left, right: right)
+            }
+
+            else {
+                break
+            }
+        }
+    }
+
+    give left
+}
+
+<<< -------------------------
+   Additive
+-------------------------- >>>
+
+proc parse_expr(p: *Parser) -> Expr {
+
+    let left = parse_mul(p)
+
+    loop while true {
+
+        match p.current {
+
+            case Token.Plus {
+                eat(p)
+                let right = parse_mul(p)
+                left = Expr.Binary(op: BinOp.Add, left: left, right: right)
+            }
+
+            case Token.Minus {
+                eat(p)
+                let right = parse_mul(p)
+                left = Expr.Binary(op: BinOp.Sub, left: left, right: right)
+            }
+
+            else {
+                break
+            }
+        }
+    }
+
+    give left
+}
+
+<<< =========================================================
+   Entry test
+========================================================= >>>
+
+entry test at vitte/api/parse {
+
+    let p = parser_new("2+3*4")
+
+    let ast = parse_expr(&p)
+
+    emit ast
+}

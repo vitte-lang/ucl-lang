@@ -1,0 +1,43 @@
+space vitte/api/export
+
+<<< Public API >>>
+
+use vitte/api/evaluate {
+    Value, ValueKind,
+    Expr, Stmt, Block, BinOp,
+    Env,
+    env_new, env_get, env_set,
+    eval_expr, eval_stmt, eval_block,
+    value_eq
+}
+
+share all
+
+<<< High-level helpers >>>
+
+proc eval(expr: Expr) -> Value {
+    let env = env_new(null)
+    give eval_expr(expr, &env)
+}
+
+proc exec(block: Block) -> Value {
+    let env = env_new(null)
+    give eval_block(block, &env)
+}
+
+proc repl(expr: Expr, env: *Env) -> Value {
+    give eval_expr(expr, env)
+}
+
+<<< Test entry >>>
+
+entry test at vitte/api/export {
+    let result = eval(
+        Expr.Binary(
+            op: BinOp.Mul,
+            left: Expr.Int(v: 6),
+            right: Expr.Int(v: 7)
+        )
+    )
+    emit result
+}

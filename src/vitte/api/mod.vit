@@ -1,0 +1,51 @@
+space vitte/api
+
+<<< =========================================================
+   Modules API
+========================================================= >>>
+
+use vitte/api/parse.*
+use vitte/api/validate.*
+use vitte/api/evaluate.*
+
+<<< =========================================================
+   Public exports
+========================================================= >>>
+
+share all
+
+<<< =========================================================
+   Facade unifiée
+========================================================= >>>
+
+proc run(input: string) {
+
+    <<< parse >>>
+    let parser = parser_new(input)
+    let ast = parse_expr(&parser)
+
+    <<< validate >>>
+    let ctx = ctx_new(null)
+    validate_expr(ast, &ctx)
+
+    if ctx.errors.len() > 0 {
+        emit ctx.errors
+        give
+    }
+
+    <<< eval >>>
+    let env = env_new(null)
+    let result = eval_expr(ast, &env)
+
+    emit result
+}
+
+<<< =========================================================
+   Entry test
+========================================================= >>>
+
+entry main at vitte/api {
+
+    run("2 + 3 * 10")
+
+}

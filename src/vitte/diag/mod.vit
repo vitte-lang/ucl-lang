@@ -1,0 +1,10 @@
+space ucl/diag
+
+pull ucl/diag/error
+pull ucl/diag/warning
+pull ucl/diag/report
+pull ucl/diag/render
+pull ucl/diag/codes
+
+share all
+.end

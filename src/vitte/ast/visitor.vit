@@ -1,0 +1,284 @@
+space vitte/ast/visitor
+
+use vitte/ast/expr { Expr, Pattern, TypeExpr, BinOp, UnaryOp }
+use vitte/ast/stmt { Stmt, Block, MatchArm, SelectArm }
+use vitte/ast/program { Program, Item, ProcDecl, EntryDecl }
+
+<<< =========================================================
+   Visitor Trait (callbacks)
+========================================================= >>>
+
+form Visitor {
+
+    <<< expr >>>
+    visit_expr: proc(e: Expr),
+    visit_stmt: proc(s: Stmt),
+    visit_block: proc(b: Block),
+
+    <<< program >>>
+    visit_item: proc(i: Item),
+    visit_program: proc(p: Program)
+}
+
+proc visitor_default() -> Visitor {
+    give Visitor {
+        visit_expr: proc(e: Expr) {},
+        visit_stmt: proc(s: Stmt) {},
+        visit_block: proc(b: Block) {},
+        visit_item: proc(i: Item) {},
+        visit_program: proc(p: Program) {}
+    }
+}
+
+<<< =========================================================
+   Walk Expr
+========================================================= >>>
+
+proc walk_expr(v: *Visitor, e: Expr) {
+
+    v.visit_expr(e)
+
+    match e {
+
+        case Expr.Unary(_, expr) {
+            walk_expr(v, expr)
+        }
+
+        case Expr.Binary(_, l, r) {
+            walk_expr(v, l)
+            walk_expr(v, r)
+        }
+
+        case Expr.Assign(t, val) {
+            walk_expr(v, t)
+            walk_expr(v, val)
+        }
+
+        case Expr.Call(c, args) {
+            walk_expr(v, c)
+            for a in args {
+                walk_expr(v, a)
+            }
+        }
+
+        case Expr.Member(obj, _) {
+            walk_expr(v, obj)
+        }
+
+        case Expr.Index(obj, idx) {
+            walk_expr(v, obj)
+            walk_expr(v, idx)
+        }
+
+        case Expr.If(c, t, e2) {
+            walk_expr(v, c)
+            walk_expr(v, t)
+            walk_expr(v, e2)
+        }
+
+        case Expr.Block(exprs) {
+            for ex in exprs {
+                walk_expr(v, ex)
+            }
+        }
+
+        case Expr.Cast(ex, _) {
+            walk_expr(v, ex)
+        }
+
+        case Expr.Is(ex, _) {
+            walk_expr(v, ex)
+        }
+
+        case Expr.List(items) {
+            for it in items {
+                walk_expr(v, it)
+            }
+        }
+
+        else { }
+    }
+}
+
+<<< =========================================================
+   Walk Pattern
+========================================================= >>>
+
+proc walk_pattern(v: *Visitor, p: Pattern) {
+
+    match p {
+        case Pattern.Variant(_, args) {
+            for a in args {
+                walk_pattern(v, a)
+            }
+        }
+        else { }
+    }
+}
+
+<<< =========================================================
+   Walk Stmt
+========================================================= >>>
+
+proc walk_stmt(v: *Visitor, s: Stmt) {
+
+    v.visit_stmt(s)
+
+    match s {
+
+        case Stmt.Let(_, _, expr) {
+            walk_expr(v, expr)
+        }
+
+        case Stmt.Const(_, _, expr) {
+            walk_expr(v, expr)
+        }
+
+        case Stmt.Set(t, val) {
+            walk_expr(v, t)
+            walk_expr(v, val)
+        }
+
+        case Stmt.Expr(expr) {
+            walk_expr(v, expr)
+        }
+
+        case Stmt.If(cond, then_b, else_b) {
+            walk_expr(v, cond)
+            walk_block(v, then_b)
+            walk_block(v, else_b)
+        }
+
+        case Stmt.While(cond, block) {
+            walk_expr(v, cond)
+            walk_block(v, block)
+        }
+
+        case Stmt.For(_, iter, block) {
+            walk_expr(v, iter)
+            walk_block(v, block)
+        }
+
+        case Stmt.Match(expr, arms) {
+            walk_expr(v, expr)
+            for a in arms {
+                walk_pattern(v, a.pat)
+                walk_block(v, a.block)
+            }
+        }
+
+        case Stmt.Select(expr, arms) {
+            walk_expr(v, expr)
+            for a in arms {
+                walk_pattern(v, a.pat)
+                walk_block(v, a.block)
+            }
+        }
+
+        case Stmt.When(expr, pat, block) {
+            walk_expr(v, expr)
+            walk_pattern(v, pat)
+            walk_block(v, block)
+        }
+
+        case Stmt.Return(expr) {
+            walk_expr(v, expr)
+        }
+
+        case Stmt.Emit(expr) {
+            walk_expr(v, expr)
+        }
+
+        case Stmt.Unsafe(block) {
+            walk_block(v, block)
+        }
+
+        else { }
+    }
+}
+
+<<< =========================================================
+   Walk Block
+========================================================= >>>
+
+proc walk_block(v: *Visitor, b: Block) {
+
+    v.visit_block(b)
+
+    for s in b.stmts {
+        walk_stmt(v, s)
+    }
+}
+
+<<< =========================================================
+   Walk Program
+========================================================= >>>
+
+proc walk_item(v: *Visitor, i: Item) {
+
+    v.visit_item(i)
+
+    match i {
+
+        case Item.Proc(p) {
+            for param in p.params {
+                <<< types only >>
+            }
+            walk_block(v, p.body)
+        }
+
+        case Item.Entry(e) {
+            walk_block(v, e.body)
+        }
+
+        else { }
+    }
+}
+
+proc walk_program(v: *Visitor, p: Program) {
+
+    v.visit_program(p)
+
+    for i in p.items {
+        walk_item(v, i)
+    }
+}
+
+<<< =========================================================
+   Example Visitor
+========================================================= >>>
+
+proc count_expr_visitor() -> Visitor {
+
+    let count = 0
+
+    give Visitor {
+
+        visit_expr: proc(e: Expr) {
+            count = count + 1
+        },
+
+        visit_stmt: proc(s: Stmt) {},
+        visit_block: proc(b: Block) {},
+        visit_item: proc(i: Item) {},
+        visit_program: proc(p: Program) {}
+    }
+}
+
+<<< =========================================================
+   Entry test
+========================================================= >>>
+
+entry test at vitte/ast/visitor {
+
+    let v = visitor_default()
+
+    let prog = Program {
+        space: SpaceDecl { path: ["demo"] },
+        items: []
+    }
+
+    walk_program(&v, prog)
+
+    emit "visitor ok"
+}

@@ -1,0 +1,254 @@
+space vitte/ast/value
+
+use vitte/ast/types { Type }
+
+<<< =========================================================
+   Runtime Values
+========================================================= >>>
+
+pick Value {
+
+    <<< primitives >>>
+    VInt(v: i64),
+    VFloat(v: f64),
+    VBool(v: bool),
+    VString(v: string),
+    VChar(v: string),
+
+    <<< special >>>
+    VUnit,
+    VNull,
+
+    <<< containers >>>
+    VList(items: [Value]),
+    VMap(keys: [string], values: [Value]),
+
+    <<< struct / form >>>
+    VStruct(name: string, fields: Map[string, Value]),
+
+    <<< enum / pick >>>
+    VVariant(name: string, fields: Map[string, Value]),
+
+    <<< pointer (low-level) >>>
+    VPointer(addr: i64),
+
+    <<< function (runtime) >>>
+    VClosure(fn_name: string, env: Map[string, Value])
+}
+
+<<< =========================================================
+   Value Environment
+========================================================= >>>
+
+form ValEnv {
+    parent: *ValEnv,
+    vars: Map[string, Value]
+}
+
+proc val_env_new(parent: *ValEnv) -> ValEnv {
+    give ValEnv {
+        parent: parent,
+        vars: Map.new()
+    }
+}
+
+proc val_get(env: *ValEnv, name: string) -> Value {
+
+    if env.vars.has(name) {
+        give env.vars.get(name)
+    }
+
+    if env.parent != null {
+        give val_get(env.parent, name)
+    }
+
+    give Value.VUnit
+}
+
+proc val_set(env: *ValEnv, name: string, v: Value) {
+    env.vars.insert(name, v)
+}
+
+<<< =========================================================
+   Value Equality
+========================================================= >>>
+
+proc value_eq(a: Value, b: Value) -> bool {
+
+    match a {
+
+        case Value.VInt(x) {
+            when b is Value.VInt(y) { give x == y }
+        }
+
+        case Value.VFloat(x) {
+            when b is Value.VFloat(y) { give x == y }
+        }
+
+        case Value.VBool(x) {
+            when b is Value.VBool(y) { give x == y }
+        }
+
+        case Value.VString(x) {
+            when b is Value.VString(y) { give x == y }
+        }
+
+        case Value.VChar(x) {
+            when b is Value.VChar(y) { give x == y }
+        }
+
+        case Value.VUnit {
+            when b is Value.VUnit { give true }
+        }
+
+        case Value.VList(xs) {
+            when b is Value.VList(ys) {
+
+                if xs.len() != ys.len() {
+                    give false
+                }
+
+                let i = 0
+                for v in xs {
+                    if not value_eq(v, ys[i]) {
+                        give false
+                    }
+                    i = i + 1
+                }
+
+                give true
+            }
+        }
+
+        case Value.VStruct(name_a, fa) {
+            when b is Value.VStruct(name_b, fb) {
+
+                if name_a != name_b {
+                    give false
+                }
+
+                for k in fa.keys() {
+                    if not fb.has(k) {
+                        give false
+                    }
+                    if not value_eq(fa.get(k), fb.get(k)) {
+                        give false
+                    }
+                }
+
+                give true
+            }
+        }
+
+        case Value.VVariant(name_a, fa) {
+            when b is Value.VVariant(name_b, fb) {
+
+                if name_a != name_b {
+                    give false
+                }
+
+                for k in fa.keys() {
+                    if not fb.has(k) {
+                        give false
+                    }
+                    if not value_eq(fa.get(k), fb.get(k)) {
+                        give false
+                    }
+                }
+
+                give true
+            }
+        }
+
+        else {
+            give false
+        }
+    }
+
+    give false
+}
+
+<<< =========================================================
+   Type Of (runtime)
+========================================================= >>>
+
+proc value_type(v: Value) -> Type {
+
+    match v {
+
+        case Value.VInt(_) { give Type.TInt }
+        case Value.VFloat(_) { give Type.TFloat }
+        case Value.VBool(_) { give Type.TBool }
+        case Value.VString(_) { give Type.TString }
+
+        case Value.VList(_) {
+            give Type.TList(inner: Type.TUnknown)
+        }
+
+        case Value.VPointer(_) {
+            give Type.TPointer(inner: Type.TUnknown)
+        }
+
+        case Value.VStruct(name, _) {
+            give Type.TStruct(name: name, fields: [])
+        }
+
+        case Value.VVariant(name, _) {
+            give Type.TEnum(name: name, variants: [])
+        }
+
+        case Value.VClosure(_, _) {
+            give Type.TProc(params: [], ret: Type.TUnknown)
+        }
+
+        else {
+            give Type.TUnknown
+        }
+    }
+}
+
+<<< =========================================================
+   Helpers
+========================================================= >>>
+
+proc value_is_truthy(v: Value) -> bool {
+
+    match v {
+        case Value.VBool(b) { give b }
+        case Value.VInt(x) { give x != 0 }
+        case Value.VString(s) { give s.len() > 0 }
+        case Value.VNull { give false }
+        case Value.VUnit { give false }
+        else { give true }
+    }
+}
+
+proc value_to_string(v: Value) -> string {
+
+    match v {
+        case Value.VInt(x) { give "" + x }
+        case Value.VFloat(x) { give "" + x }
+        case Value.VBool(b) { give "" + b }
+        case Value.VString(s) { give s }
+        case Value.VUnit { give "unit" }
+        case Value.VNull { give "null" }
+        else { give "<value>" }
+    }
+}
+
+<<< =========================================================
+   Entry test
+========================================================= >>>
+
+entry test at vitte/ast/value {
+
+    let env = val_env_new(null)
+
+    val_set(&env, "x", Value.VInt(v: 42))
+
+    let v = val_get(&env, "x")
+
+    let s = value_to_string(v)
+
+    emit s
+}

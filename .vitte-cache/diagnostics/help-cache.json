@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "versionSignature": "bin:vitte|unknown",
+  "entries": {
+    "bin:vitte|unknown|en|E1029": {
+      "help": "Keep local declaration names unique within one module.",
+      "at": 1776027884349,
+      "example": "proc ping_alt() -> i32 { return 0 }"
+    },
+    "bin:vitte|unknown|en|E0002": {
+      "help": "Provide a value, call, or block expression (e.g., 1, name, call(), { ... }).",
+      "at": 1776027884331,
+      "example": "proc main() -> i32 { return 0 }"
+    },
+    "bin:vitte|unknown|en|E0009": {
+      "help": "Add a body with { ... } or mark it #[extern] if it is provided by the runtime.",
+      "at": 1776027787815,
+      "example": "proc add(a: int, b: int) -> int { return a + b }"
+    },
+    "bin:vitte|unknown|en|E0007": {
+      "help": "Top-level items include space, use, form, pick, type, const, proc, and entry.",
+      "at": 1776027787801,
+      "example": "space my/app\nproc main() -> int { return 0 }"
+    }
+  }
+}

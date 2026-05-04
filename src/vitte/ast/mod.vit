@@ -1,0 +1,65 @@
+space vitte/ast
+
+<<< =========================================================
+   AST Modules
+========================================================= >>>
+
+use vitte/ast/expr.*
+use vitte/ast/stmt.*
+use vitte/ast/types.*
+use vitte/ast/value.*
+use vitte/ast/program.*
+use vitte/ast/schema.*
+use vitte/ast/template.*
+use vitte/ast/macro.*
+use vitte/ast/profile.*
+use vitte/ast/visitor.*
+
+<<< =========================================================
+   Public Exports
+========================================================= >>>
+
+share all
+
+<<< =========================================================
+   Unified AST Helpers
+========================================================= >>>
+
+proc ast_new_program(path: [string]) -> Program {
+    give Program {
+        space: SpaceDecl { path: path },
+        items: []
+    }
+}
+
+proc ast_empty_block() -> Block {
+    give Block { stmts: [] }
+}
+
+proc ast_add_item(p: *Program, it: Item) {
+    p.items.push(it)
+}
+
+<<< =========================================================
+   Debug Helpers
+========================================================= >>>
+
+proc ast_summary(p: *Program) -> string {
+
+    let n = p.items.len()
+
+    give "Program(items=" + n + ")"
+}
+
+<<< =========================================================
+   Entry test
+========================================================= >>>
+
+entry test at vitte/ast {
+
+    let prog = ast_new_program(["demo"])
+
+    let s = ast_summary(&prog)
+
+    emit s
+}

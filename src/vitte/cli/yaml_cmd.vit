@@ -1,0 +1,7 @@
+space ucl/cli
+
+pull core/io
+
+proc yaml_cmd(args List of String)
+  io.print "yaml command"
+.end

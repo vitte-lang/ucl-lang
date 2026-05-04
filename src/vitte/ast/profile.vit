@@ -1,0 +1,135 @@
+space vitte/ast/profile
+
+<<< =========================================================
+   Profiling / Instrumentation AST
+========================================================= >>>
+
+<<< Profiling events >>>
+pick ProfileEvent {
+    EnterFn(name: string),
+    ExitFn(name: string),
+    BlockStart(id: string),
+    BlockEnd(id: string),
+    Custom(tag: string)
+}
+
+<<< Timing info >>>
+form ProfileTime {
+    start: i64,
+    end: i64
+}
+
+<<< Metric record >>>
+form ProfileRecord {
+    event: ProfileEvent,
+    time: ProfileTime
+}
+
+<<< =========================================================
+   Profiling context
+========================================================= >>>
+
+form ProfileCtx {
+    enabled: bool,
+    records: [ProfileRecord]
+}
+
+proc profile_new(enabled: bool) -> ProfileCtx {
+    give ProfileCtx {
+        enabled: enabled,
+        records: []
+    }
+}
+
+proc profile_emit(ctx: *ProfileCtx, event: ProfileEvent, start: i64, end: i64) {
+
+    if not ctx.enabled {
+        give
+    }
+
+    ctx.records.push(
+        ProfileRecord {
+            event: event,
+            time: ProfileTime {
+                start: start,
+                end: end
+            }
+        }
+    )
+}
+
+<<< =========================================================
+   Helpers (instrumentation hooks)
+========================================================= >>>
+
+proc prof_enter_fn(ctx: *ProfileCtx, name: string, t: i64) {
+    profile_emit(ctx, ProfileEvent.EnterFn(name: name), t, t)
+}
+
+proc prof_exit_fn(ctx: *ProfileCtx, name: string, t: i64) {
+    profile_emit(ctx, ProfileEvent.ExitFn(name: name), t, t)
+}
+
+proc prof_block_start(ctx: *ProfileCtx, id: string, t: i64) {
+    profile_emit(ctx, ProfileEvent.BlockStart(id: id), t, t)
+}
+
+proc prof_block_end(ctx: *ProfileCtx, id: string, t: i64) {
+    profile_emit(ctx, ProfileEvent.BlockEnd(id: id), t, t)
+}
+
+<<< =========================================================
+   Aggregation
+========================================================= >>>
+
+form ProfileStats {
+    total_events: i64,
+    total_time: i64
+}
+
+proc profile_stats(ctx: *ProfileCtx) -> ProfileStats {
+
+    let total = ctx.records.len()
+    let time = 0
+
+    for r in ctx.records {
+        time = time + (r.time.end - r.time.start)
+    }
+
+    give ProfileStats {
+        total_events: total,
+        total_time: time
+    }
+}
+
+<<< =========================================================
+   Debug / Dump
+========================================================= >>>
+
+proc profile_dump(ctx: *ProfileCtx) {
+
+    for r in ctx.records {
+        emit r
+    }
+}
+
+<<< =========================================================
+   Entry test
+========================================================= >>>
+
+entry test at vitte/ast/profile {
+
+    let ctx = profile_new(true)
+
+    prof_enter_fn(&ctx, "main", 0)
+    prof_block_start(&ctx, "b1", 1)
+
+    <<< simulate work >>>
+
+    prof_block_end(&ctx, "b1", 10)
+    prof_exit_fn(&ctx, "main", 11)
+
+    let stats = profile_stats(&ctx)
+
+    emit stats
+}

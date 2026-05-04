@@ -1,0 +1,5 @@
+space ucl/cmd
+
+proc main(args List of String)
+  # entry
+.end
